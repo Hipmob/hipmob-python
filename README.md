@@ -15,13 +15,13 @@ To get started, add the following to your Node file:
 
 Simple usage looks like:
 
-   hm = hipmob.Hipmob("your-username", "your-apikey")
-   apps = hm.get_applications()
-   if apps == None:
-      print "No applications were found."
-   else:
-      for app in apps:
-      	  print app
+       hm = hipmob.Hipmob("your-username", "your-apikey")
+       apps = hm.get_applications()
+       if apps == None:
+       	  print "No applications were found."
+       else:
+		for app in apps:
+		    print app
 
 ## Documentation
 
