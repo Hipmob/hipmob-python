@@ -1,3 +1,6 @@
 *~
 setup
 *.pyc
+build
+dist
+hipmob.egg-info
