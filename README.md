@@ -11,7 +11,7 @@ Download the latest version of the Hipmob server API Python bindings with:
 
 To get started, add the following to your Node file:
 
-   import hipmob
+       import hipmob
 
 Simple usage looks like:
 
