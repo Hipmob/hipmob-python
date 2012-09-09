@@ -20,7 +20,7 @@ try:
     if not hasattr(json, 'loads'):
         requires.append('simplejson')
 except ImportError:
-  requires.append('simplejson')
+    requires.append('simplejson')
 
 setup(name='hipmob',
       version=version.VERSION,

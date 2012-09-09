@@ -9,6 +9,8 @@ from pprint import pprint
 import base64
 import json
 import re
+import time
+import hashlib
 from datetime import datetime
 
 # core object
@@ -105,6 +107,14 @@ class Hipmob:
             for x in friends:
                 ids.append(x.id())
             return self._parent.__set_friends__(self._app, self._id, ids)
+
+        def generate_peer_token(self, secret, friend):
+            now = str(int(time.time()))
+            return now +'|'+ hashlib.sha512(self._id+'|'+friend.id()+'|'+now+'|'+secret).hexdigest()
+
+        def generate_auth_token(self, secret):
+            now = str(int(time.time()))
+            return now +'|'+ hashlib.sha512(self._id+'|'+now+'|'+secret).hexdigest()
 
     def __init__(self, username, apikey):
         if username == None or "" == username.strip():
