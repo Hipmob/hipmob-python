@@ -68,6 +68,9 @@ class Hipmob:
 
         def get_available_message_count(self):
             return self._parent.__get_available_message_count__(self._app, self._id)
+
+        def check_device_status(self):
+            return self._parent.__check_device_status__(self._app, self._id)
         
         def send_text_message(self, text, **kwargs):
             return self._parent.__send_text_message__(self._app, self._id, text, **kwargs)
@@ -298,6 +301,29 @@ class Hipmob:
             if 'count' in bits:
                 return bits['count']
         return 0
+
+    def __check_device_status__(self, mobilekey, deviceid):
+        # build the request
+        opener = urllib2.build_opener(urllib2.HTTPHandler)
+        req = urllib2.Request(self._serverurl+'apps/'+mobilekey+'/devices/'+deviceid+"/status")
+        req.get_method = lambda: 'GET'
+        base64string = base64.encodestring('%s:%s' % (self._username, self._apikey)).replace('\n', '')
+        req.add_header("Authorization", "Basic %s" % base64string)  
+        resp = None
+        try:
+            u = opener.open(req)
+            resp = dict(u.info())
+        except urllib2.HTTPError, e:
+            self.__handle_error__(e, resp)
+            
+        self.__check_for_errors__(resp)                
+            
+        # we're here, so go
+        if 'content-type' in resp and resp['content-type'] == 'application/vnd.com.hipmob.Device.status+json; version=1.0':
+            bits = json.loads(u.read())
+            if 'online' in bits:
+                return bits['online']
+        return False
 
     def __send_text_message__(self, mobilekey, deviceid, text, **kwargs):
         # build the request
