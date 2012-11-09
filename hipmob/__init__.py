@@ -4,6 +4,7 @@
 
 # Imports
 import urllib2, urllib
+from urlparse import urlparse
 import os
 from pprint import pprint
 import base64
@@ -75,6 +76,12 @@ class Hipmob:
         def send_text_message(self, text, **kwargs):
             return self._parent.__send_text_message__(self._app, self._id, text, **kwargs)
 
+        def send_json_message(self, content, **kwargs):
+            return self._parent.__send_json_message__(self._app, self._id, content, **kwargs)
+
+        def send_binary_message(self, content, **kwargs):
+            return self._parent.__send_binary_message__(self._app, self._id, content, **kwargs)
+
         def send_picture_message(self, picturefile, mimetype, **kwargs):
             return self._parent.__send_picture_message__(self._app, self._id, picturefile, mimetype, **kwargs)
 
@@ -119,21 +126,30 @@ class Hipmob:
             now = str(int(time.time()))
             return now +'|'+ hashlib.sha512(self._id+'|'+now+'|'+secret).hexdigest()
 
-    def __init__(self, username, apikey):
+    def __init__(self, username, apikey = None):
+        self._serverurl = 'https://api.hipmob.com/'
         if username == None or "" == username.strip():
             # throw an exception
             raise ValueError("username can not be null or blank. Get one at https://hipmob.com/.")
+        else:
+            self._username = username
 
         if apikey == None or "" == apikey.strip():
-            # throw an exception
-            raise ValueError("apikey can not be null or blank. Log into your account at https://hipmob.com/ to retrieve your api key.")
-        
-        # save the values
-        self._username = username
-        self._apikey = apikey
+            # try and parse it
+            bits = urlparse(username)
+            
+            if bits.username != None and bits.password != None and bits.hostname != None:
+                self._username = bits.username
+                self._apikey = bits.password
+                self._serverurl = "https://"+bits.hostname+"/"
+            else:
+                # throw an exception
+                raise ValueError("apikey can not be null or blank. Log into your account at https://hipmob.com/ to retrieve your api key.")
+        else:
+            # save the values
+            self._apikey = apikey
 
         # get the url, and override it if necessary
-        self._serverurl = 'https://api.hipmob.com/'
         if 'hipmob_server' in os.environ:
             self._serverurl = os.environ['hipmob_server']
         
@@ -336,6 +352,68 @@ class Hipmob:
         base64string = base64.encodestring('%s:%s' % (self._username, self._apikey)).replace('\n', '')
         req.add_header("Authorization", "Basic %s" % base64string)
         req.add_data(urllib.urlencode(txdata))
+        resp = None
+        try:
+            u = opener.open(req)
+            resp = dict(u.info())
+        except urllib2.HTTPError, e:
+            self.__handle_error__(e, resp)
+        self.__check_for_errors__(resp)                
+            
+        # we're here, so go
+        if 'x-hipmob-reason' in resp and self._message_sent_pattern.match(resp['x-hipmob-reason']) != None:
+            return True
+        else:
+            return False
+
+    def __send_json_message__(self, mobilekey, deviceid, content, **kwargs):
+        if isinstance(content, basestring):
+            # ensure it is a valid JSON object
+            data = json.loads(content)
+            data = content
+        elif isinstance(content, dict):
+            data = json.dumps(content)
+        else:
+            raise ValueError("Invalid JSON content specified.")
+
+        # build the request
+        opener = urllib2.build_opener(urllib2.HTTPHandler)
+        req = urllib2.Request(self._serverurl+'apps/'+mobilekey+'/devices/'+deviceid+"/messages")
+        req.get_method = lambda: 'POST'
+        base64string = base64.encodestring('%s:%s' % (self._username, self._apikey)).replace('\n', '')
+        req.add_header("Authorization", "Basic %s" % base64string)
+        req.add_header("Content-Type", "application/json")
+        if 'autocreate' in kwargs and kwargs['autocreate'] == True:
+            req.add_header("X-Hipmob-Autocreate", 'true')
+        req.add_data(data)
+        resp = None
+        try:
+            u = opener.open(req)
+            resp = dict(u.info())
+        except urllib2.HTTPError, e:
+            self.__handle_error__(e, resp)
+        self.__check_for_errors__(resp)                
+            
+        # we're here, so go
+        if 'x-hipmob-reason' in resp and self._message_sent_pattern.match(resp['x-hipmob-reason']) != None:
+            return True
+        else:
+            return False
+
+    def __send_binary_message__(self, mobilekey, deviceid, content, **kwargs):
+        if not hasattr(content, 'read'):
+            raise ValueError("Invalid binary content specified: must have a \"read\" method.")
+
+        # build the request
+        opener = urllib2.build_opener(urllib2.HTTPHandler)
+        req = urllib2.Request(self._serverurl+'apps/'+mobilekey+'/devices/'+deviceid+"/messages")
+        req.get_method = lambda: 'POST'
+        base64string = base64.encodestring('%s:%s' % (self._username, self._apikey)).replace('\n', '')
+        req.add_header("Authorization", "Basic %s" % base64string)
+        req.add_header("Content-Type", "application/octet-stream")
+        if 'autocreate' in kwargs and kwargs['autocreate'] == True:
+            req.add_header("X-Hipmob-Autocreate", 'true')
+        req.add_data(content.read())
         resp = None
         try:
             u = opener.open(req)
