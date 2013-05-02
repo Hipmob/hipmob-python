@@ -36,6 +36,36 @@ class Hipmob:
         def __str__(self):
             return "(HipmobApp) "+self._name+" ["+self._id+"]";
 
+    class HipmobUser:
+        def __init__(self, parent, username, sourcedata):
+            self._parent = parent
+            self._sourcedata = sourcedata
+            self._username = username
+            if 'first_name' in sourcedata:
+                self._first_name = sourcedata['first_name']
+            if 'last_name' in sourcedata:
+                self._last_name = sourcedata['last_name']
+            if 'status' in sourcedata:
+                self._status = sourcedata['status']
+
+        def username(self):
+            return self._username
+
+        def first_name(self):
+            return self._first_name
+
+        def last_name(self):
+            return self._last_name
+
+        def status(self):
+            return self._status
+
+        def set_status(self, status, **kwargs):
+            return self._parent.__set_user_status__(self._username, status, **kwargs)
+
+        def __str__(self):
+            return "(HipmobUser) "+self._username+" ("+self._first_name+" "+self._last_name+") ["+self._status+"]"
+
     class HipmobDevice:
         def __init__(self, parent, app, id):
             self._parent = parent
@@ -164,6 +194,10 @@ class Hipmob:
         self._pattern7 = re.compile(r"Unauthorized/")
         self._pattern8 = re.compile(r"Authentication required/")
         self._pattern9 = re.compile(r"Invalid message content-type\.")
+        self._pattern10 = re.compile(r"User not found\.")
+        self._pattern11 = re.compile(r"No status specified\.")
+        self._pattern12 = re.compile(r"Invalid status specified\.")
+        self._pattern13 = re.compile(r"You can only change your own status\.")
 
         # response patterns
         self._message_sent_pattern = re.compile(r"Message sent\.")
@@ -171,7 +205,7 @@ class Hipmob:
         self._no_changes_made_pattern = re.compile(r"No changes made\.")
         self._all_friends_removed_pattern = re.compile(r"Friend list cleared \((\d*) friends removed\)\.")
         self._friends_set_pattern = re.compile(r"Friend list updated \((\d*) friends added\)\.")
-
+        self._status_updated_pattern = re.compile(r"\[(\w*)\] status updated to \"(\w*)\"")
             
     def __handle_error__(self, e, resp):
         #print e.code
@@ -247,6 +281,25 @@ class Hipmob:
         res = None
         if 'content-type' in resp and resp['content-type'] == 'application/vnd.com.hipmob.App+json; version=1.0':
             res = Hipmob.HipmobApp(self, str(mobilekey), json.loads(u.read()))
+        return res
+
+    def get_user(self, username):
+        opener = urllib2.build_opener(urllib2.HTTPHandler)
+        req = urllib2.Request(self._serverurl + 'user/'+str(username))
+        base64string = base64.encodestring('%s:%s' % (self._username, self._apikey)).replace('\n', '')
+        req.add_header("Authorization", "Basic %s" % base64string)  
+        u = None
+        resp = None
+        try:
+            u = opener.open(req)
+            resp = dict(u.info())
+        except urllib2.HTTPError, e:
+            self.__handle_error__(e, resp)
+
+        self.__check_for_errors__(resp)
+        res = None
+        if 'content-type' in resp and resp['content-type'] == 'application/vnd.com.hipmob.User+json; version=1.0':
+            res = Hipmob.HipmobUser(self, str(username), json.loads(u.read()))
         return res
 
     def get_device(self, mobilekey, deviceid, **kwargs):
@@ -622,3 +675,25 @@ class Hipmob:
         else:
             raise ValueError("Invalid response from server: "+resp['x-hipmob-reason'])
 
+    def __set_user_status__(self, username, status, **kwargs):
+        # build the request
+        opener = urllib2.build_opener(urllib2.HTTPHandler)
+        txdata = { "status": status }
+        req = urllib2.Request(self._serverurl+'user/'+username+'/status')
+        req.get_method = lambda: 'POST'
+        base64string = base64.encodestring('%s:%s' % (self._username, self._apikey)).replace('\n', '')
+        req.add_header("Authorization", "Basic %s" % base64string)
+        req.add_data(urllib.urlencode(txdata))
+        resp = None
+        try:
+            u = opener.open(req)
+            resp = dict(u.info())
+        except urllib2.HTTPError, e:
+            self.__handle_error__(e, resp)
+        self.__check_for_errors__(resp)                
+            
+        # we're here, so go
+        if 'x-hipmob-reason' in resp and self._status_updated_pattern.match(resp['x-hipmob-reason']) != None:
+            return True
+        else:
+            return False
