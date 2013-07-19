@@ -33,6 +33,9 @@ class Hipmob:
                 if 'modified' in sourcedata:
                     self.modified = datetime.strptime(sourcedata['modified'], "%Y-%m-%dT%H:%M:%S.%fZ")
 
+        def send_text_messages(self, text, devices, **kwargs):
+            return self._parent.__send_text_messages__(self._id, text, devices, **kwargs)
+
         def __str__(self):
             return "(HipmobApp) "+self._name+" ["+self._id+"]";
 
@@ -201,6 +204,7 @@ class Hipmob:
 
         # response patterns
         self._message_sent_pattern = re.compile(r"Message sent\.")
+        self._multiple_messages_sent_pattern = re.compile(r"(\d*) messages sent\.")
         self._friend_removed_pattern = re.compile(r"Friend removed\.")
         self._no_changes_made_pattern = re.compile(r"No changes made\.")
         self._all_friends_removed_pattern = re.compile(r"Friend list cleared \((\d*) friends removed\)\.")
@@ -264,7 +268,13 @@ class Hipmob:
                     res.append(Hipmob.HipmobApp(self, x['id'], x))
         return res
                 
-    def get_application(self, mobilekey):
+    def get_application(self, mobilekey, **kwargs):
+        if 'verify' in kwargs and kwargs['verify'] == False:
+            return Hipmob.HipmobApp(self, str(mobilekey), {
+                        'id': mobilekey,
+                        'name': 'not set',
+                        'url': 'not set'
+                        })
         opener = urllib2.build_opener(urllib2.HTTPHandler)
         req = urllib2.Request(self._serverurl + 'apps/'+str(mobilekey))
         base64string = base64.encodestring('%s:%s' % (self._username, self._apikey)).replace('\n', '')
@@ -697,3 +707,33 @@ class Hipmob:
             return True
         else:
             return False
+
+    def __send_text_messages__(self, mobilekey, text, devices, **kwargs):
+        # build the request
+        opener = urllib2.build_opener(urllib2.HTTPHandler)
+        txtdata = urllib.urlencode({ "text": text })
+        for device in devices:
+            txtdata = txtdata + "&" + urllib.urlencode({'devices': device })
+        req = urllib2.Request(self._serverurl+'apps/'+mobilekey+'/devices/messages')
+        req.get_method = lambda: 'POST'
+        base64string = base64.encodestring('%s:%s' % (self._username, self._apikey)).replace('\n', '')
+        req.add_header("Authorization", "Basic %s" % base64string)
+        req.add_data(txtdata)
+        resp = None
+        try:
+            u = opener.open(req)
+            resp = dict(u.info())
+        except urllib2.HTTPError, e:
+            self.__handle_error__(e, resp)
+        self.__check_for_errors__(resp)                
+            
+        # we're here, so go
+        if 'x-hipmob-reason' in resp:
+            match = self._multiple_messages_sent_pattern.match(resp['x-hipmob-reason'])
+            if match != None:
+                return int(match.group(1))
+            elif self._message_sent_pattern.match(resp['x-hipmob-reason']) != None:
+                return 1
+
+        # no match: return false
+        return False
